@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateApiKey, logApiCall } from '@/lib/api-auth';
 import { createServiceClient } from '@/lib/supabase-server';
 import { detectCarrier } from '@/lib/carriers';
+import { sendWebhooks } from '@/lib/webhook-sender';
 
 // POST /api/v1/shipments — registrace zásilky
 export async function POST(req: NextRequest) {
@@ -44,6 +45,16 @@ export async function POST(req: NextRequest) {
       await logApiCall(shop.id, '/api/v1/shipments', 'POST', 500, body, { error: error.message }, req.headers.get('x-forwarded-for'));
       return res;
     }
+
+    // Fire-and-forget webhook
+    sendWebhooks(shop.id, 'shipment.created', {
+      id: shipment.id,
+      tracking_number: shipment.tracking_number,
+      carrier: shipment.carrier,
+      status: shipment.status,
+      verification_score: shipment.verification_score ?? 0,
+      verification_details: shipment.verification_details ?? {},
+    });
 
     const res = NextResponse.json({ shipment }, { status: 201 });
     await logApiCall(shop.id, '/api/v1/shipments', 'POST', 201, body, { shipment_id: shipment.id }, req.headers.get('x-forwarded-for'));

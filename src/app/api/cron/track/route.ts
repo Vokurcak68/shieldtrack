@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase-server';
 import { getAdapter } from '@/lib/carriers';
 import { verifyShipment } from '@/lib/verification';
+import { sendWebhooks } from '@/lib/webhook-sender';
 import type { Shipment, Carrier } from '@/lib/types';
 
 // GET /api/cron/track — periodická kontrola zásilek
@@ -121,11 +122,34 @@ export async function GET(req: NextRequest) {
         .from('st_verification_results')
         .insert(verResults);
 
-      // Webhook pokud se status změnil
+      const updatedScore = updates.verification_score as number;
+      const oldScore = shipment.verification_score;
+
+      // Webhook: status se změnil
       if (updates.status && updates.status !== oldStatus) {
         results.updated++;
-        await sendWebhook(supabase, shipment, updates.status as string, report);
+        const webhookData = {
+          id: shipment.id,
+          tracking_number: shipment.tracking_number,
+          carrier: shipment.carrier,
+          status: updates.status as string,
+          verification_score: updatedScore,
+          verification_details: (updates.verification_details as Record<string, unknown>) ?? {},
+        };
+        sendWebhooks(shipment.shop_id, 'shipment.updated', webhookData);
         results.webhooksSent++;
+      }
+
+      // Webhook: verifikační skóre se změnilo
+      if (updatedScore !== oldScore) {
+        sendWebhooks(shipment.shop_id, 'shipment.verified', {
+          id: shipment.id,
+          tracking_number: shipment.tracking_number,
+          carrier: shipment.carrier,
+          status: (updates.status as string) ?? shipment.status,
+          verification_score: updatedScore,
+          verification_details: (updates.verification_details as Record<string, unknown>) ?? {},
+        });
       }
     } catch (err) {
       console.error(`Error tracking shipment ${shipment.id}:`, err);
@@ -140,36 +164,4 @@ export async function GET(req: NextRequest) {
   });
 }
 
-async function sendWebhook(
-  supabase: ReturnType<typeof createServiceClient>,
-  shipment: Shipment,
-  newStatus: string,
-  report: { score: number; status: string; summary: string }
-) {
-  try {
-    const { data: shop } = await supabase
-      .from('st_shops')
-      .select('webhook_url')
-      .eq('id', shipment.shop_id)
-      .single();
 
-    if (!shop?.webhook_url) return;
-
-    await fetch(shop.webhook_url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        event: 'shipment.status_changed',
-        shipment_id: shipment.id,
-        tracking_number: shipment.tracking_number,
-        old_status: shipment.status,
-        new_status: newStatus,
-        verification_score: report.score,
-        verification_status: report.status,
-        timestamp: new Date().toISOString(),
-      }),
-    });
-  } catch (err) {
-    console.error('Webhook send error:', err);
-  }
-}
