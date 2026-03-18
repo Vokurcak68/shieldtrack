@@ -54,51 +54,100 @@ const RESULT_ICONS: Record<string, string> = {
   pending: "⏳",
 };
 
-export default function ShipmentDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function ShipmentDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = use(params);
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [events, setEvents] = useState<TrackingEvent[]>([]);
   const [verResults, setVerResults] = useState<VerificationResult[]>([]);
   const [loading, setLoading] = useState(true);
+  const [checking, setChecking] = useState(false);
+  const [checkMessage, setCheckMessage] = useState("");
 
-  useEffect(() => {
-    async function load() {
-      const supabase = createBrowserClient();
+  async function loadData() {
+    const supabase = createBrowserClient();
 
-      const { data: ship } = await supabase
-        .from("st_shipments")
+    const { data: ship } = await supabase
+      .from("st_shipments")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (ship) {
+      setShipment(ship as Shipment);
+
+      const { data: ev } = await supabase
+        .from("st_tracking_events")
         .select("*")
-        .eq("id", id)
-        .single();
+        .eq("shipment_id", id)
+        .order("timestamp", { ascending: false });
 
-      if (ship) {
-        setShipment(ship as Shipment);
+      setEvents((ev as TrackingEvent[]) || []);
 
-        const { data: ev } = await supabase
-          .from("st_tracking_events")
-          .select("*")
-          .eq("shipment_id", id)
-          .order("timestamp", { ascending: false });
+      const { data: vr } = await supabase
+        .from("st_verification_results")
+        .select("*")
+        .eq("shipment_id", id)
+        .order("checked_at", { ascending: false });
 
-        setEvents((ev as TrackingEvent[]) || []);
-
-        const { data: vr } = await supabase
-          .from("st_verification_results")
-          .select("*")
-          .eq("shipment_id", id)
-          .order("checked_at", { ascending: false });
-
-        setVerResults((vr as VerificationResult[]) || []);
-      }
-
-      setLoading(false);
+      setVerResults((vr as VerificationResult[]) || []);
     }
 
-    load();
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  async function handleTrackNow() {
+    setChecking(true);
+    setCheckMessage("");
+
+    try {
+      const supabase = createBrowserClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        setCheckMessage("Nepřihlášený uživatel.");
+        setChecking(false);
+        return;
+      }
+
+      const res = await fetch(`/api/dashboard/shipments/${id}/track`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setCheckMessage(data.error || "Chyba při kontrole.");
+      } else {
+        setCheckMessage(data.message || "Kontrola dokončena.");
+        // Reload dat
+        setLoading(true);
+        await loadData();
+      }
+    } catch {
+      setCheckMessage("Něco se pokazilo.");
+    } finally {
+      setChecking(false);
+    }
+  }
+
   if (loading) {
-    return <div className="text-center text-text-muted py-12">Načítání...</div>;
+    return (
+      <div className="text-center text-text-muted py-12">Načítání...</div>
+    );
   }
 
   if (!shipment) {
@@ -106,7 +155,10 @@ export default function ShipmentDetailPage({ params }: { params: Promise<{ id: s
       <div className="text-center py-12">
         <div className="text-4xl mb-3">🔍</div>
         <p className="text-text-muted">Zásilka nenalezena.</p>
-        <Link href="/dashboard/shipments" className="text-accent mt-4 inline-block hover:underline">
+        <Link
+          href="/dashboard/shipments"
+          className="text-accent mt-4 inline-block hover:underline"
+        >
           ← Zpět na seznam
         </Link>
       </div>
@@ -124,16 +176,34 @@ export default function ShipmentDetailPage({ params }: { params: Promise<{ id: s
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <Link
-          href="/dashboard/shipments"
-          className="text-text-muted hover:text-text-primary transition-colors"
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 flex-1">
+          <Link
+            href="/dashboard/shipments"
+            className="text-text-muted hover:text-text-primary transition-colors"
+          >
+            ← Zpět
+          </Link>
+          <span className="text-text-muted">/</span>
+          <h1 className="text-2xl font-bold font-mono">
+            {shipment.tracking_number}
+          </h1>
+        </div>
+        <button
+          onClick={handleTrackNow}
+          disabled={checking}
+          className="bg-accent hover:bg-accent-hover disabled:opacity-50 text-bg-primary font-semibold px-5 py-2.5 rounded-lg transition-colors text-sm whitespace-nowrap"
         >
-          ← Zpět
-        </Link>
-        <span className="text-text-muted">/</span>
-        <h1 className="text-2xl font-bold font-mono">{shipment.tracking_number}</h1>
+          {checking ? "Kontroluji..." : "🔄 Zkontrolovat teď"}
+        </button>
       </div>
+
+      {/* Check message */}
+      {checkMessage && (
+        <div className="mb-6 bg-bg-card border border-border rounded-lg px-4 py-3 text-sm text-text-secondary">
+          {checkMessage}
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Hlavní info */}
@@ -150,7 +220,8 @@ export default function ShipmentDetailPage({ params }: { params: Promise<{ id: s
                 </h2>
                 <p className="text-text-secondary text-sm">
                   {CARRIER_LABELS[shipment.carrier] || shipment.carrier}
-                  {shipment.carrier_status_raw && ` — ${shipment.carrier_status_raw}`}
+                  {shipment.carrier_status_raw &&
+                    ` — ${shipment.carrier_status_raw}`}
                 </p>
               </div>
             </div>
@@ -174,7 +245,9 @@ export default function ShipmentDetailPage({ params }: { params: Promise<{ id: s
               {shipment.last_checked_at && (
                 <InfoRow
                   label="Poslední kontrola"
-                  value={new Date(shipment.last_checked_at).toLocaleString("cs")}
+                  value={new Date(shipment.last_checked_at).toLocaleString(
+                    "cs"
+                  )}
                 />
               )}
             </div>
@@ -185,7 +258,8 @@ export default function ShipmentDetailPage({ params }: { params: Promise<{ id: s
             <h3 className="text-lg font-semibold mb-4">📍 Timeline</h3>
             {events.length === 0 ? (
               <p className="text-text-muted text-sm">
-                Zatím žádné tracking události. Počkejte na další kontrolu.
+                Zatím žádné tracking události. Klikněte na &quot;Zkontrolovat
+                teď&quot; nebo počkejte na automatickou kontrolu.
               </p>
             ) : (
               <div className="space-y-0">
@@ -257,10 +331,7 @@ export default function ShipmentDetailPage({ params }: { params: Promise<{ id: s
             {/* Jednotlivé checky */}
             <div className="space-y-3">
               {Array.from(latestChecks.entries()).map(([type, check]) => (
-                <div
-                  key={type}
-                  className="flex items-start gap-3 text-sm"
-                >
+                <div key={type} className="flex items-start gap-3 text-sm">
                   <span className="text-lg mt-[-2px]">
                     {RESULT_ICONS[check.result] || "❓"}
                   </span>
@@ -279,7 +350,8 @@ export default function ShipmentDetailPage({ params }: { params: Promise<{ id: s
 
               {latestChecks.size === 0 && (
                 <p className="text-text-muted text-sm">
-                  Zatím neproběhla žádná verifikace. Počkejte na první kontrolu.
+                  Zatím neproběhla žádná verifikace. Klikněte na
+                  &quot;Zkontrolovat teď&quot;.
                 </p>
               )}
             </div>

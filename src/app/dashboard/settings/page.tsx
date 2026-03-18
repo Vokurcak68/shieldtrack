@@ -12,11 +12,14 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     async function loadSettings() {
       const supabase = createBrowserClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data: shop } = await supabase
@@ -68,9 +71,16 @@ export default function SettingsPage() {
 
   async function regenerateApiKey() {
     if (!shopId) return;
-    if (!confirm("Opravdu chcete vygenerovat nový API klíč? Starý přestane ihned fungovat.")) return;
+    if (
+      !confirm(
+        "Opravdu chcete vygenerovat nový API klíč? Starý přestane ihned fungovat."
+      )
+    )
+      return;
 
-    const newKey = crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
+    const newKey =
+      crypto.randomUUID().replaceAll("-", "") +
+      crypto.randomUUID().replaceAll("-", "");
 
     const supabase = createBrowserClient();
     const { error } = await supabase
@@ -86,6 +96,24 @@ export default function SettingsPage() {
     }
   }
 
+  async function copyApiKey() {
+    try {
+      await navigator.clipboard.writeText(apiKey);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback
+      const el = document.createElement("textarea");
+      el.value = apiKey;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }
+
   if (loading) {
     return <div className="text-text-muted">Načítání...</div>;
   }
@@ -94,9 +122,14 @@ export default function SettingsPage() {
     <div className="max-w-3xl">
       <h1 className="text-2xl font-bold mb-6">Nastavení shopu</h1>
 
-      <form onSubmit={saveSettings} className="bg-bg-card border border-border rounded-xl p-6 space-y-5">
+      <form
+        onSubmit={saveSettings}
+        className="bg-bg-card border border-border rounded-xl p-6 space-y-5"
+      >
         <div>
-          <label className="block text-sm text-text-secondary mb-1.5">Název shopu</label>
+          <label className="block text-sm text-text-secondary mb-1.5">
+            Název shopu
+          </label>
           <input
             type="text"
             value={shopName}
@@ -107,7 +140,9 @@ export default function SettingsPage() {
         </div>
 
         <div>
-          <label className="block text-sm text-text-secondary mb-1.5">Doména</label>
+          <label className="block text-sm text-text-secondary mb-1.5">
+            Doména
+          </label>
           <input
             type="text"
             value={domain}
@@ -118,7 +153,9 @@ export default function SettingsPage() {
         </div>
 
         <div>
-          <label className="block text-sm text-text-secondary mb-1.5">Webhook URL</label>
+          <label className="block text-sm text-text-secondary mb-1.5">
+            Webhook URL
+          </label>
           <input
             type="url"
             value={webhookUrl}
@@ -132,7 +169,9 @@ export default function SettingsPage() {
         </div>
 
         <div>
-          <label className="block text-sm text-text-secondary mb-1.5">API klíč</label>
+          <label className="block text-sm text-text-secondary mb-1.5">
+            API klíč
+          </label>
           <div className="flex gap-2">
             <input
               type="text"
@@ -142,12 +181,22 @@ export default function SettingsPage() {
             />
             <button
               type="button"
+              onClick={copyApiKey}
+              className="bg-bg-secondary border border-border text-text-secondary px-4 py-2.5 rounded-lg text-sm hover:border-accent hover:text-accent transition-colors whitespace-nowrap"
+            >
+              {copied ? "✓ Zkopírováno" : "📋 Kopírovat"}
+            </button>
+            <button
+              type="button"
               onClick={regenerateApiKey}
-              className="bg-warning/20 border border-warning/40 text-warning px-4 py-2.5 rounded-lg text-sm hover:bg-warning/30"
+              className="bg-warning/20 border border-warning/40 text-warning px-4 py-2.5 rounded-lg text-sm hover:bg-warning/30 transition-colors whitespace-nowrap"
             >
               Regenerovat
             </button>
           </div>
+          <p className="text-xs text-text-muted mt-1">
+            Použijte tento klíč v headeru X-Api-Key při volání API.
+          </p>
         </div>
 
         {message && (
@@ -157,7 +206,7 @@ export default function SettingsPage() {
         <button
           type="submit"
           disabled={saving}
-          className="bg-accent hover:bg-accent-hover disabled:opacity-50 text-bg-primary font-semibold px-6 py-2.5 rounded-lg"
+          className="bg-accent hover:bg-accent-hover disabled:opacity-50 text-bg-primary font-semibold px-6 py-2.5 rounded-lg transition-colors"
         >
           {saving ? "Ukládám..." : "Uložit změny"}
         </button>

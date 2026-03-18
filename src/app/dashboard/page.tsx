@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createBrowserClient } from "@/lib/supabase-browser";
-import type { Shipment, ShopStats } from "@/lib/types";
+import type { Shipment } from "@/lib/types";
 
 const STATUS_LABELS: Record<string, string> = {
   registered: "Registrovaná",
@@ -37,8 +37,15 @@ const CARRIER_LABELS: Record<string, string> = {
   other: "Ostatní",
 };
 
+interface DashStats {
+  totalShipments: number;
+  deliveredCount: number;
+  inTransitCount: number;
+  avgScore: number;
+}
+
 export default function DashboardPage() {
-  const [stats, setStats] = useState<ShopStats | null>(null);
+  const [stats, setStats] = useState<DashStats | null>(null);
   const [recentShipments, setRecentShipments] = useState<Shipment[]>([]);
   const [shipments30d, setShipments30d] = useState<{ date: string; count: number }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,7 +53,9 @@ export default function DashboardPage() {
   useEffect(() => {
     async function loadData() {
       const supabase = createBrowserClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
       // Načíst shop
@@ -63,12 +72,27 @@ export default function DashboardPage() {
 
       const shopId = shops[0].id;
 
-      // Statistiky
+      // Celkem zásilek
       const { count: totalShipments } = await supabase
         .from("st_shipments")
         .select("*", { count: "exact", head: true })
         .eq("shop_id", shopId);
 
+      // Doručeno
+      const { count: deliveredCount } = await supabase
+        .from("st_shipments")
+        .select("*", { count: "exact", head: true })
+        .eq("shop_id", shopId)
+        .eq("status", "delivered");
+
+      // V přepravě
+      const { count: inTransitCount } = await supabase
+        .from("st_shipments")
+        .select("*", { count: "exact", head: true })
+        .eq("shop_id", shopId)
+        .in("status", ["in_transit", "out_for_delivery"]);
+
+      // Průměrné skóre
       const { data: avgData } = await supabase
         .from("st_shipments")
         .select("verification_score")
@@ -83,35 +107,24 @@ export default function DashboardPage() {
             )
           : 0;
 
-      const { count: deliveredCount } = await supabase
-        .from("st_shipments")
-        .select("*", { count: "exact", head: true })
-        .eq("shop_id", shopId)
-        .eq("status", "delivered");
-
-      const deliveredPercent =
-        totalShipments && totalShipments > 0
-          ? Math.round(((deliveredCount || 0) / totalShipments) * 100)
-          : 0;
-
       setStats({
         totalShipments: totalShipments || 0,
+        deliveredCount: deliveredCount || 0,
+        inTransitCount: inTransitCount || 0,
         avgScore,
-        deliveredPercent,
-        avgDeliveryDays: 0,
       });
 
-      // Poslední zásilky
+      // Posledních 5 zásilek
       const { data: shipments } = await supabase
         .from("st_shipments")
         .select("*")
         .eq("shop_id", shopId)
         .order("created_at", { ascending: false })
-        .limit(10);
+        .limit(5);
 
       setRecentShipments((shipments as Shipment[]) || []);
 
-      // Pseudo-graf za 30 dní (počty registrací)
+      // Graf za 30 dní
       const days: { date: string; count: number }[] = [];
       for (let i = 29; i >= 0; i--) {
         const d = new Date();
@@ -150,7 +163,15 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Přehled</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Přehled</h1>
+        <Link
+          href="/dashboard/shipments?new=1"
+          className="bg-accent hover:bg-accent-hover text-bg-primary font-semibold px-5 py-2.5 rounded-lg transition-colors text-sm"
+        >
+          + Přidat zásilku
+        </Link>
+      </div>
 
       {/* Stats karty */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -160,26 +181,28 @@ export default function DashboardPage() {
           icon="📦"
         />
         <StatCard
-          label="Průměrné skóre"
-          value={`${stats?.avgScore || 0}/100`}
-          icon="🛡️"
-          accent
-        />
-        <StatCard
           label="Doručeno"
-          value={`${stats?.deliveredPercent || 0}%`}
+          value={String(stats?.deliveredCount || 0)}
           icon="✅"
         />
         <StatCard
-          label="Průměrná doba"
-          value={`${stats?.avgDeliveryDays || 0} dní`}
-          icon="⏱️"
+          label="V přepravě"
+          value={String(stats?.inTransitCount || 0)}
+          icon="🚚"
+        />
+        <StatCard
+          label="Prům. skóre"
+          value={`${stats?.avgScore || 0}/100`}
+          icon="🛡️"
+          accent
         />
       </div>
 
       {/* Graf za 30 dní */}
       <div className="bg-bg-card border border-border rounded-xl p-6 mb-8">
-        <h2 className="text-lg font-semibold mb-4">Zásilky za posledních 30 dní</h2>
+        <h2 className="text-lg font-semibold mb-4">
+          Zásilky za posledních 30 dní
+        </h2>
         {shipments30d.length === 0 ? (
           <p className="text-sm text-text-muted">Žádná data.</p>
         ) : (
@@ -218,7 +241,7 @@ export default function DashboardPage() {
             <div className="text-4xl mb-3">📭</div>
             <p>Zatím žádné zásilky.</p>
             <p className="text-sm mt-1">
-              Použijte API pro registraci první zásilky.
+              Klikněte na &quot;Přidat zásilku&quot; nebo použijte API.
             </p>
           </div>
         ) : (
