@@ -53,8 +53,8 @@ export const ceskaPostaAdapter: CarrierAdapter = {
 
   detect(trackingNumber: string): boolean {
     const tn = trackingNumber.trim().toUpperCase();
-    // DR/RR/BA/NX/EE/CE/CD/CJ + 9 číslic + CZ (13 znaků)
-    if (/^[A-Z]{2}\d{9}[A-Z]{2}$/.test(tn)) return true;
+    // DR/RR/BA/NX/EE/CE/CD/CJ + 9-10 číslic + CZ (13-14 znaků)
+    if (/^[A-Z]{2}\d{9,10}[A-Z]{2}$/.test(tn)) return true;
     // Čistě numerické ~13 číslic (interní podací čísla)
     if (/^\d{13,14}$/.test(tn)) return true;
     return false;
