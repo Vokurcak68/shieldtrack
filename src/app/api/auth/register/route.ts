@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { createServiceClient } from '@/lib/supabase-server';
 
 export async function POST(req: NextRequest) {
@@ -10,23 +9,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Email, heslo a název shopu jsou povinné.' }, { status: 400 });
     }
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    const serviceClient = createServiceClient();
 
-    // Registrace uživatele
-    const { data: authData, error: authError } = await supabase.auth.signUp({
+    // Registrace uživatele (service role = auto-confirm email)
+    const { data: authData, error: authError } = await serviceClient.auth.admin.createUser({
       email,
       password,
+      email_confirm: true,
     });
 
     if (authError || !authData.user) {
       return NextResponse.json({ error: authError?.message || 'Registrace selhala.' }, { status: 400 });
     }
 
-    // Vytvoření shopu (service role aby obešel RLS)
-    const serviceClient = createServiceClient();
+    // Vytvoření shopu
     const { data: shop, error: shopError } = await serviceClient
       .from('st_shops')
       .insert({
@@ -42,8 +38,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       user: authData.user,
-      session: authData.session,
       shop,
+      message: 'Účet vytvořen. Přihlaste se.',
     }, { status: 201 });
   } catch {
     return NextResponse.json({ error: 'Chyba serveru.' }, { status: 500 });

@@ -37,12 +37,18 @@ function LoginForm() {
           setError(data.error || "Registrace selhala.");
           return;
         }
-        // Přihlásit po registraci
-        if (data.session) {
-          const supabase = createBrowserClient();
-          await supabase.auth.setSession(data.session);
-          router.push("/dashboard");
+        // Po registraci rovnou přihlásit
+        const supabase = createBrowserClient();
+        const { error: loginErr } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (loginErr) {
+          setError("Účet vytvořen, ale přihlášení selhalo. Zkuste se přihlásit ručně.");
+          setIsRegister(false);
+          return;
         }
+        router.push("/dashboard");
       } else {
         const supabase = createBrowserClient();
         const { error: authError } = await supabase.auth.signInWithPassword({
