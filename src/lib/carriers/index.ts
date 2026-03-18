@@ -3,12 +3,18 @@ import type { Carrier } from '@/lib/types';
 import { ceskaPostaAdapter } from './ceska-posta';
 import { zasilkovnaAdapter } from './zasilkovna';
 import { pplAdapter } from './ppl';
+import { dpdAdapter } from './dpd';
+import { glsAdapter } from './gls';
+import { geisAdapter } from './geis';
 
 // Všechny registrované adaptéry
 const adapters: CarrierAdapter[] = [
   ceskaPostaAdapter,
   zasilkovnaAdapter,
   pplAdapter,
+  dpdAdapter,
+  glsAdapter,
+  geisAdapter,
 ];
 
 /**
@@ -23,9 +29,16 @@ export function detectCarrier(trackingNumber: string): Carrier {
   }
 
   // Fallback detekce pro přepravce bez adaptéru
-  const tn = trackingNumber.trim();
+  const tn = trackingNumber.trim().toUpperCase();
+
+  // DPD: 14 číslic
   if (/^\d{14}$/.test(tn)) return 'dpd';
-  if (/^\d{8,11}$/.test(tn)) return 'gls';
+  // GLS: 8-12 číslic (ale ne PPL 40xxxxxxxxx)
+  if (/^\d{8,12}$/.test(tn) && !/^40\d{9}$/.test(tn)) return 'gls';
+  // Geis: N/G + čísla, nebo 15+ číslic, nebo XXXX-XXXX-XXXX
+  if (/^[NG]\d{8,}$/.test(tn)) return 'geis';
+  if (/^\d{15,}$/.test(tn)) return 'geis';
+  if (/^\d{4}-\d{4}-\d{4,}$/.test(tn)) return 'geis';
 
   return 'other';
 }
