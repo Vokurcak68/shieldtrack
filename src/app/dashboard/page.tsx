@@ -110,6 +110,30 @@ export default function DashboardPage() {
         .limit(10);
 
       setRecentShipments((shipments as Shipment[]) || []);
+
+      // Pseudo-graf za 30 dní (počty registrací)
+      const days: { date: string; count: number }[] = [];
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const key = d.toISOString().slice(0, 10);
+        days.push({ date: key, count: 0 });
+      }
+
+      const { data: monthShipments } = await supabase
+        .from("st_shipments")
+        .select("created_at")
+        .eq("shop_id", shopId)
+        .gte("created_at", days[0].date + "T00:00:00.000Z")
+        .order("created_at", { ascending: true });
+
+      for (const row of monthShipments || []) {
+        const key = new Date(row.created_at).toISOString().slice(0, 10);
+        const day = days.find((d) => d.date === key);
+        if (day) day.count += 1;
+      }
+
+      setShipments30d(days);
       setLoading(false);
     }
 
@@ -151,6 +175,30 @@ export default function DashboardPage() {
           value={`${stats?.avgDeliveryDays || 0} dní`}
           icon="⏱️"
         />
+      </div>
+
+      {/* Graf za 30 dní */}
+      <div className="bg-bg-card border border-border rounded-xl p-6 mb-8">
+        <h2 className="text-lg font-semibold mb-4">Zásilky za posledních 30 dní</h2>
+        {shipments30d.length === 0 ? (
+          <p className="text-sm text-text-muted">Žádná data.</p>
+        ) : (
+          <div className="flex items-end gap-1 h-40">
+            {shipments30d.map((d) => {
+              const max = Math.max(...shipments30d.map((x) => x.count), 1);
+              const h = Math.max(4, (d.count / max) * 100);
+              return (
+                <div key={d.date} className="flex-1 group relative">
+                  <div
+                    className="w-full bg-accent/70 hover:bg-accent rounded-t transition-colors"
+                    style={{ height: `${h}%` }}
+                    title={`${d.date}: ${d.count}`}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Poslední zásilky */}
