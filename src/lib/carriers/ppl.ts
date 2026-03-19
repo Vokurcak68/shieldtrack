@@ -6,9 +6,12 @@ export const pplAdapter: CarrierAdapter = {
   name: 'ppl',
 
   detect(trackingNumber: string): boolean {
-    const tn = trackingNumber.trim();
-    // 11 číslic začínajících na 40
-    return /^40\d{9}$/.test(tn);
+    const tn = trackingNumber.trim().toUpperCase();
+    // PPL formáty: 40xxxxxxxxx (11 číslic), nebo 10-12 číslic začínajících na 40/50/60
+    if (/^[456]0\d{8,10}$/.test(tn)) return true;
+    // PPL CZ: s prefixem (např. PPL + číslo)
+    if (/^PPL/i.test(tn)) return true;
+    return false;
   },
 
   async track(trackingNumber: string): Promise<TrackingResult> {

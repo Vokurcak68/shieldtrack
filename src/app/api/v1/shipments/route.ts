@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { tracking_number, recipient_name, recipient_city, recipient_zip, recipient_address, external_order_id, sender_name, sender_address } = body;
+    const { tracking_number, carrier: carrierInput, recipient_name, recipient_city, recipient_zip, recipient_address, external_order_id, sender_name, sender_address } = body;
 
     if (!tracking_number) {
       const res = NextResponse.json({ error: 'Tracking číslo je povinné.' }, { status: 400 });
@@ -20,7 +20,8 @@ export async function POST(req: NextRequest) {
       return res;
     }
 
-    const carrier = detectCarrier(tracking_number);
+    // Použij přepravce z requestu pokud je zadaný, jinak detekuj automaticky
+    const carrier = carrierInput || detectCarrier(tracking_number);
     const supabase = createServiceClient();
 
     const { data: shipment, error } = await supabase
