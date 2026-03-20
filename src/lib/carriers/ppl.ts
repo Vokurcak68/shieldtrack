@@ -104,19 +104,18 @@ export const pplAdapter: CarrierAdapter = {
 
       const carrierStatusRaw = data.lastEventText || phase;
 
-      // Extract recipient info from addresses
+      // Extract info from addresses
+      // NOTE: PPL type=4 is SENDER, not recipient. Recipient name is not available via public API (GDPR).
       let deliveryCity: string | undefined;
-      let carrierRecipientName: string | undefined;
-      const recipientAddr = data.addresses?.find((a) => a.type === 1 || a.type === 4);
+      const recipientAddr = data.addresses?.find((a) => a.type === 1); // type 1 = recipient (if ever returned)
       if (recipientAddr?.city) deliveryCity = recipientAddr.city;
-      if (recipientAddr?.name) carrierRecipientName = recipientAddr.name;
 
       return {
         found: true,
         status,
         carrierStatusRaw,
         deliveryCity,
-        carrierRecipientName,
+        carrierRecipientName: recipientAddr?.name, // only if type=1 exists (currently PPL doesn't return it)
         trackingUrl,
         lastEventDate: data.lastEventDate || events[events.length - 1]?.timestamp,
         events,
