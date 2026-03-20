@@ -16,8 +16,9 @@ interface CheckConfig {
 const CHECKS: CheckConfig[] = [
   { type: 'tracking_exists', maxPoints: 20, label: 'Tracking číslo existuje' },
   { type: 'tracking_active', maxPoints: 15, label: 'Zásilka je aktivní' },
-  { type: 'city_match', maxPoints: 20, label: 'Shoda města doručení' },
-  { type: 'zip_match', maxPoints: 15, label: 'Shoda PSČ' },
+  { type: 'recipient_name_match', maxPoints: 15, label: 'Shoda jména příjemce' },
+  { type: 'city_match', maxPoints: 15, label: 'Shoda města doručení' },
+  { type: 'zip_match', maxPoints: 10, label: 'Shoda PSČ' },
   { type: 'timeline_valid', maxPoints: 15, label: 'Platná časová osa' },
   { type: 'delivery_confirmed', maxPoints: 15, label: 'Potvrzení doručení' },
 ];
@@ -37,16 +38,19 @@ export function verifyShipment(
   // 2. Tracking active (15 bodů)
   checks.push(checkTrackingActive(trackingResult));
 
-  // 3. City match (20 bodů)
+  // 3. Recipient name match (15 bodů)
+  checks.push(checkRecipientNameMatch(shipment, trackingResult));
+
+  // 4. City match (15 bodů)
   checks.push(checkCityMatch(shipment, trackingResult));
 
-  // 4. ZIP match (15 bodů)
+  // 5. ZIP match (10 bodů)
   checks.push(checkZipMatch(shipment, trackingResult));
 
-  // 5. Timeline valid (15 bodů)
+  // 6. Timeline valid (15 bodů)
   checks.push(checkTimelineValid(shipment, trackingResult));
 
-  // 6. Delivery confirmed (15 bodů)
+  // 7. Delivery confirmed (15 bodů)
   checks.push(checkDeliveryConfirmed(trackingResult));
 
   const score = checks.reduce((sum, c) => sum + c.points, 0);
@@ -88,8 +92,42 @@ function checkTrackingActive(tracking: TrackingResult | null): VerificationCheck
   return { ...config, result: 'warning', points: Math.floor(config.maxPoints / 2), details: 'Zásilka zatím bez pohybu' };
 }
 
-function checkCityMatch(shipment: Shipment, tracking: TrackingResult | null): VerificationCheck {
+function checkRecipientNameMatch(shipment: Shipment, tracking: TrackingResult | null): VerificationCheck {
   const config = CHECKS[2];
+  if (!tracking || !tracking.found || !tracking.carrierRecipientName) {
+    return { ...config, result: 'pending', points: 0, details: 'Jméno příjemce od přepravce není dostupné' };
+  }
+  if (!shipment.recipient_name) {
+    return { ...config, result: 'warning', points: 0, details: 'Jméno příjemce nebylo zadáno' };
+  }
+
+  const expected = normalize(shipment.recipient_name);
+  const actual = normalize(tracking.carrierRecipientName);
+
+  // Přesná shoda
+  if (expected === actual) {
+    return { ...config, result: 'pass', points: config.maxPoints, details: `Jméno příjemce odpovídá: ${tracking.carrierRecipientName}` };
+  }
+
+  // Částečná shoda — rozdělit na slova a porovnat
+  const expectedParts = expected.split(/\s+/).filter(p => p.length > 1);
+  const actualParts = actual.split(/\s+/).filter(p => p.length > 1);
+  const matchingParts = expectedParts.filter(ep => actualParts.some(ap => ap === ep || ap.includes(ep) || ep.includes(ap)));
+
+  if (matchingParts.length >= Math.min(expectedParts.length, actualParts.length) && matchingParts.length > 0) {
+    // Příjmení se shoduje (nebo jméno v jiném pořadí)
+    return { ...config, result: 'pass', points: config.maxPoints, details: `Jméno příjemce odpovídá: ${tracking.carrierRecipientName}` };
+  }
+
+  if (matchingParts.length > 0) {
+    return { ...config, result: 'warning', points: Math.floor(config.maxPoints / 2), details: `Částečná shoda jména: očekáváno "${shipment.recipient_name}", nalezeno "${tracking.carrierRecipientName}"` };
+  }
+
+  return { ...config, result: 'fail', points: 0, details: `Neshodné jméno příjemce: očekáváno "${shipment.recipient_name}", nalezeno "${tracking.carrierRecipientName}"` };
+}
+
+function checkCityMatch(shipment: Shipment, tracking: TrackingResult | null): VerificationCheck {
+  const config = CHECKS[3];
   if (!tracking || !tracking.found || !tracking.deliveryCity) {
     return { ...config, result: 'pending', points: 0, details: 'Město doručení zatím není dostupné' };
   }
@@ -105,7 +143,7 @@ function checkCityMatch(shipment: Shipment, tracking: TrackingResult | null): Ve
 }
 
 function checkZipMatch(shipment: Shipment, tracking: TrackingResult | null): VerificationCheck {
-  const config = CHECKS[3];
+  const config = CHECKS[4];
   if (!tracking || !tracking.found || !tracking.deliveryZip) {
     return { ...config, result: 'pending', points: 0, details: 'PSČ doručení zatím není dostupné' };
   }
@@ -121,7 +159,7 @@ function checkZipMatch(shipment: Shipment, tracking: TrackingResult | null): Ver
 }
 
 function checkTimelineValid(shipment: Shipment, tracking: TrackingResult | null): VerificationCheck {
-  const config = CHECKS[4];
+  const config = CHECKS[5];
   if (!tracking || !tracking.found || tracking.events.length === 0) {
     return { ...config, result: 'pending', points: 0, details: 'Žádné události k validaci' };
   }
@@ -140,7 +178,7 @@ function checkTimelineValid(shipment: Shipment, tracking: TrackingResult | null)
 }
 
 function checkDeliveryConfirmed(tracking: TrackingResult | null): VerificationCheck {
-  const config = CHECKS[5];
+  const config = CHECKS[6];
   if (!tracking || !tracking.found) {
     return { ...config, result: 'pending', points: 0, details: 'Čeká na potvrzení doručení' };
   }

@@ -4,7 +4,7 @@ export type Carrier = 'ceska_posta' | 'zasilkovna' | 'ppl' | 'dpd' | 'gls' | 'ba
 
 export type ShipmentStatus = 'registered' | 'in_transit' | 'out_for_delivery' | 'delivered' | 'returned' | 'lost' | 'cancelled';
 
-export type VerificationCheckType = 'tracking_exists' | 'tracking_active' | 'city_match' | 'zip_match' | 'timeline_valid' | 'delivery_confirmed' | 'photo_verified';
+export type VerificationCheckType = 'tracking_exists' | 'tracking_active' | 'city_match' | 'zip_match' | 'timeline_valid' | 'delivery_confirmed' | 'photo_verified' | 'recipient_name_match';
 
 export type VerificationResultType = 'pass' | 'fail' | 'warning' | 'pending';
 
@@ -67,6 +67,7 @@ export interface TrackingResult {
   carrierStatusRaw: string;
   deliveryCity?: string;
   deliveryZip?: string;
+  carrierRecipientName?: string;
   lastEventDate?: string;
   trackingUrl?: string;
   events: TrackingEventData[];

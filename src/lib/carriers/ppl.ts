@@ -104,16 +104,19 @@ export const pplAdapter: CarrierAdapter = {
 
       const carrierStatusRaw = data.lastEventText || phase;
 
-      // Extract delivery city from addresses
+      // Extract recipient info from addresses
       let deliveryCity: string | undefined;
+      let carrierRecipientName: string | undefined;
       const recipientAddr = data.addresses?.find((a) => a.type === 1 || a.type === 4);
       if (recipientAddr?.city) deliveryCity = recipientAddr.city;
+      if (recipientAddr?.name) carrierRecipientName = recipientAddr.name;
 
       return {
         found: true,
         status,
         carrierStatusRaw,
         deliveryCity,
+        carrierRecipientName,
         trackingUrl,
         lastEventDate: data.lastEventDate || events[events.length - 1]?.timestamp,
         events,
