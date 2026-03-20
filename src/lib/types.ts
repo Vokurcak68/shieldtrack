@@ -68,6 +68,7 @@ export interface TrackingResult {
   deliveryCity?: string;
   deliveryZip?: string;
   lastEventDate?: string;
+  trackingUrl?: string;
   events: TrackingEventData[];
 }
 
